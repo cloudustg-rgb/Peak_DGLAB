@@ -15,14 +15,18 @@ namespace PeakDGLab
         private DateTime _lastUpdateTimer;
         private float _debugLogTimer = 0f;
 
-        // æ­»äº¡çŠ¶æ€æœº
+        // ËÀÍö×´Ì¬»ú
         private bool _isDead = false;
         private float _deathStartTime = 0f;
 
-        // æ™ºèƒ½ä¿æŠ¤å˜é‡
+        // ÖÇÄÜ±£»¤±äÁ¿
         private bool _ignoreStaminaShock = true;
         private float _protectionStartTime = 0f;
         private int _lastCharacterId = -1;
+
+        // [ĞÂÔö] ÖÇÄÜ Bug ±ê¼Ç£ºÓÃÓÚ¼ÇÂ¼µ±Ç°µÄ±ôËÀ/»èÃÔÊÇ·ñÊÇ¿¨×¡µÄ¼ÙÊı¾İ
+        private bool _isDeathTimerBugged = false;
+        private bool _isPassedOutBugged = false;
 
         public static float CurrentFinalStrength = 0f;
 
@@ -41,11 +45,10 @@ namespace PeakDGLab
 
         public void ProcessPlayerStatusUpdate(GameComponentManager components)
         {
-            // 1. åˆ·æ–°ç»„ä»¶ç¼“å­˜ (ä¸ç®¡èƒ½ä¸èƒ½æ‹¿åˆ°ï¼Œå…ˆåˆ·æ–°)
             components.CacheGameComponents();
 
-            // 2. æ€»å¼€å…³æ£€æµ‹ (æœ€é«˜ä¼˜å…ˆçº§ï¼šç¡¬æ–­ç”µ)
-            if (!_config.EnableShock.Value)
+            // ×Ü¿ª¹ØÓëÔİÍ£¼ì²â
+            if (!_config.EnableShock.Value || Time.timeScale <= 0f)
             {
                 if (CurrentFinalStrength > 0f)
                 {
@@ -55,35 +58,12 @@ namespace PeakDGLab
                 return;
             }
 
-            // 3. [æ‹†åˆ†é€»è¾‘ A] æ¸¸æˆæš‚åœæ£€æµ‹ (å•æœºESC/æš‚åœ)
-            // Time.timeScale ä¸º 0 è¡¨ç¤ºæ¸¸æˆä¸–ç•Œåœæ­¢äº†ã€‚
-            // æ­¤æ—¶åº”ç«‹å³åœæ­¢è¾“å‡ºé˜²æ­¢"å¡éœ‡"ï¼Œä½†ä¿ç•™å†…éƒ¨çŠ¶æ€(å¦‚èƒ½é‡ç´¯ç§¯)ï¼Œä»¥ä¾¿å–æ¶ˆæš‚åœæ—¶æ— ç¼è¡”æ¥ã€‚
-            // æ³¨æ„ï¼šè”æœºæ¨¡å¼æŒ‰ ESC é€šå¸¸ timeScale ä»ä¸º 1ï¼Œä¸ä¼šè¿›å…¥è¿™é‡Œï¼Œç¬¦åˆ"è”æœºä¸åœ"çš„éœ€æ±‚ã€‚
-            if (Time.timeScale <= 0f)
-            {
-                if (CurrentFinalStrength > 0f)
-                {
-                    CurrentFinalStrength = 0f;
-                    _ = _apiClient.SendStrengthUpdateAsync(set: 0);
-                }
-                return; // æš‚åœæ—¶ç›´æ¥è¿”å›ï¼Œä¸è·‘åç»­é€»è¾‘
-            }
-
-            // 4. é¢‘ç‡é™åˆ¶
             if ((DateTime.UtcNow - _lastUpdateTimer).TotalMilliseconds < _config.CheckIntervalMs.Value)
                 return;
             _lastUpdateTimer = DateTime.UtcNow;
 
-            // 5. ç›®æ ‡è·å– (å¤„ç† è§‚æˆ˜ vs æœ¬ä½“)
-            Character player;
-            if (_config.EnableSpectatorShock.Value)
-                player = Character.observedCharacter; // è‡ªåŠ¨å¤„ç†: æ²¡è§‚æˆ˜æ—¶å®ƒå°±æ˜¯ localCharacter
-            else
-                player = Character.localCharacter;
+            Character player = _config.EnableSpectatorShock.Value ? Character.observedCharacter : Character.localCharacter;
 
-            // 6. [æ‹†åˆ†é€»è¾‘ B] å­˜åœ¨æ€§æ£€æµ‹ (ä¸»èœå•/åŠ è½½ä¸­/æœªç”Ÿæˆ)
-            // å¦‚æœè¿™ä¸ªæ—¶å€™ player æ˜¯ç©ºçš„ï¼Œè¯´æ˜å›åˆ°äº†ä¸»èœå•æˆ–æ­£åœ¨æ¢åœºæ™¯ã€‚
-            // æ­¤æ—¶å¿…é¡»æ‰§è¡Œ"å½»åº•å½’é›¶"å’Œ"çŠ¶æ€é‡ç½®"ã€‚
             if (player == null || player.data == null)
             {
                 if (CurrentFinalStrength > 0f)
@@ -91,99 +71,108 @@ namespace PeakDGLab
                     CurrentFinalStrength = 0f;
                     _ = _apiClient.SendStrengthUpdateAsync(set: 0);
                 }
-
-                // å½»åº•ä¸¢å¤±ç›®æ ‡æ—¶ï¼Œé‡ç½®æ‰€æœ‰ç›‘æµ‹çŠ¶æ€ï¼Œé˜²æ­¢é‡æ–°è¿›æ¸¸æˆç¬é—´è¯¯åˆ¤
                 _lastEnergy = null;
                 _energyLossAccumulator = 0f;
-                _lastCharacterId = -1;
                 return;
             }
 
-            // === è‡³æ­¤ï¼Œç¡®è®¤æ¸¸æˆæ­£åœ¨è¿›è¡Œ(timeScale>0) ä¸” è§’è‰²å­˜åœ¨(player!=null) ===
             var data = player.data;
-
-            // [åŒæ­¥èƒ½é‡åŸºå‡†] 
             UpdateEnergyTracker(data);
 
-            // [IDå˜åŒ–æ£€æµ‹] (é‡ç”Ÿ/åˆ‡æ¢è§‚æˆ˜)
+            // =========================
+            // [ĞÂÔö] ÖÇÄÜ Bug Ê¶±ğÂß¼­
+            // =========================
+            // Èç¹ûÊı¾İÏÔÊ¾Òì³£(±ôËÀ/»èÃÔ)£¬µ«Íæ¼ÒÉíÌå¿ØÖÆÁ¦ºÜ¸ß(>0.8£¬ËµÃ÷Õ¾ÆğÀ´ÁË)
+            // ÄÇÃ´Á¢¿Ì±ê¼ÇÕâĞ©×´Ì¬Îª Bug£¬ºóĞøÖ±½ÓÎŞÊÓ¡£
+            if (data.currentRagdollControll > 0.8f)
+            {
+                if (data.deathTimer > 0f && !_isDeathTimerBugged)
+                {
+                    _isDeathTimerBugged = true;
+                    _logger.LogInfo("[System] ¼ì²âµ½ '±ôËÀÕ©Ê¬' (DeathTimer¿¨×¡)£¬ÒÑ×Ô¶¯ºöÂÔÒì³£×´Ì¬¡£");
+                }
+                if ((data.passedOut || data.fullyPassedOut) && !_isPassedOutBugged)
+                {
+                    _isPassedOutBugged = true;
+                    _logger.LogInfo("[System] ¼ì²âµ½ '»èÃÔĞĞ×ß' (PassedOut¿¨×¡)£¬ÒÑ×Ô¶¯ºöÂÔÒì³£×´Ì¬¡£");
+                }
+            }
+
+            // ×´Ì¬»Ö¸´¼ì²â£ºÈç¹ûÓÎÏ·Êı¾İÕæµÄ¹éÁãÁË£¬ÄÇ°Ñ Bug ±ê¼ÇÒ²Çåµô£¬ÒÔ±ãÏÂ´ÎÕı³£´¥·¢
+            if (data.deathTimer <= 0f) _isDeathTimerBugged = false;
+            if (!data.passedOut && !data.fullyPassedOut) _isPassedOutBugged = false;
+
+            // ID ±ä»¯¼ì²â (»»ÈËÁËÖØÖÃ±ê¼Ç)
             int currentId = player.GetInstanceID();
             if (currentId != _lastCharacterId)
             {
                 _lastCharacterId = currentId;
                 _ignoreStaminaShock = true;
                 _protectionStartTime = Time.unscaledTime;
-                _logger.LogInfo("[System] è§’è‰²åˆ‡æ¢/é‡ç”Ÿï¼Œå¼€å¯ä½“åŠ›å±è”½ä¿æŠ¤");
-
-                // åˆ‡æ¢è§’è‰²ï¼Œæ¸…ç©ºç´¯ç§¯æ± ï¼Œé‡ç½®èƒ½é‡åŸºå‡†
                 _energyLossAccumulator = 0f;
                 _lastEnergy = data.extraStamina;
+                _isDeathTimerBugged = false;
+                _isPassedOutBugged = false;
             }
 
-            // ===== æ­»äº¡åˆ¤å®š =====
+            // ===== 1. ÕæÕıËÀÍö =====
             if (data.dead)
             {
                 ProcessDeathState(data);
                 return;
             }
 
-            // æ­»äº¡çŠ¶æ€é‡Šæ”¾ (å¤æ´»)
+            // ¸´»îÂß¼­
             if (_isDead && !data.dead)
             {
                 _isDead = false;
                 _ignoreStaminaShock = true;
                 _protectionStartTime = Time.unscaledTime;
-
                 CurrentFinalStrength = 0f;
                 _ = _apiClient.SendStrengthUpdateAsync(set: 0);
-                _logger.LogInfo("[Death] ç©å®¶å·²å¤æ´»ï¼Œå¼€å¯ä½“åŠ›å±è”½ä¿æŠ¤");
-
-                // å¤æ´»é‡ç½®èƒ½é‡
                 _energyLossAccumulator = 0f;
                 _lastEnergy = data.extraStamina;
+                _isDeathTimerBugged = false;
+                _isPassedOutBugged = false;
             }
 
-            // æ¿’æ­»é˜¶æ®µ
-            if (data.deathTimer > 0f)
+            // ===== 2. ±ôËÀ±£»¤ (DeathTimer) =====
+            // [ĞŞ¸´] Ö»ÓĞµ± deathTimer > 0 ÇÒ [²»ÊÇBug] ÇÒ [ÉíÌåÌ±Èí] Ê±£¬²ÅÈÏÎªÊÇÕæ±ôËÀ¡£
+            if (data.deathTimer > 0f && !_isDeathTimerBugged && data.currentRagdollControll < 0.5f)
             {
                 if (CurrentFinalStrength != 0f)
                 {
                     CurrentFinalStrength = 0f;
                     _ = _apiClient.SendStrengthUpdateAsync(set: 0);
                 }
-                _energyLossAccumulator = 0f;
                 return;
             }
 
-            // æ™ºèƒ½ä¿æŠ¤è§£é™¤æ£€æŸ¥
+            // ÖÇÄÜÌåÁ¦±£»¤
             if (_ignoreStaminaShock)
             {
                 float stamina = Mathf.Clamp01(data.currentStamina);
-                // è§£é™¤æ¡ä»¶: ä½“åŠ›>95% æˆ– ä¿æŠ¤è¶…æ—¶15ç§’
                 if (stamina > 0.95f || (Time.unscaledTime - _protectionStartTime > 15.0f))
                 {
                     _ignoreStaminaShock = false;
-                    _logger.LogInfo($"[System] ä½“åŠ›å±è”½ä¿æŠ¤è§£é™¤ (ä½“åŠ›:{stamina:P0})");
                 }
                 else
                 {
-                    // ä¿æŠ¤æœŸï¼šå¦‚æœæœ‰éœ‡åŠ¨è¾“å‡ºåˆ™å½’é›¶ (ä½†å…è®¸èƒ½é‡ç›‘æµ‹åœ¨åå°è·‘ï¼Œåªæ˜¯ä¸å‘)
                     if (CurrentFinalStrength > 0f)
                     {
                         CurrentFinalStrength = 0f;
                         _ = _apiClient.SendStrengthUpdateAsync(set: 0);
                     }
-                    _energyLossAccumulator = 0f; // ä¿æŠ¤æœŸä¸ç´¯ç§¯èƒ½é‡éœ‡åŠ¨
                     return;
                 }
             }
 
-            // ===== æ˜è¿· =====
-            if (data.passedOut || data.fullyPassedOut)
+            // ===== 3. »èÃÔÂß¼­ (PassedOut) =====
+            // [ĞŞ¸´] Í¬ÑùÔö¼ÓÖÇÄÜÅĞ¶¨
+            if ((data.passedOut || data.fullyPassedOut) && !_isPassedOutBugged && data.currentRagdollControll < 0.5f)
             {
-                // æ˜è¿·ä¸æ˜¯"ä½ä½“åŠ›"ï¼Œæ‰€ä»¥ä¼ å…¥ false (ä¸å±è”½)
                 float baseVal = CalculateBaseStatus(data, player.refs?.afflictions, false);
                 float target = baseVal * _config.PassOutMultiplier.Value;
-
                 CurrentFinalStrength = target < 0.01f ? 0f : target;
 
                 int sendVal = Mathf.CeilToInt(CurrentFinalStrength);
@@ -193,27 +182,19 @@ namespace PeakDGLab
                 return;
             }
 
-            // ===== æ­£å¸¸ç”Ÿå­˜çŠ¶æ€ =====
-            if (player.refs?.afflictions == null)
-            {
-                if (CurrentFinalStrength > 0f)
-                {
-                    CurrentFinalStrength = 0f;
-                    _ = _apiClient.SendStrengthUpdateAsync(set: 0);
-                }
-                return;
-            }
+            // ===== 4. Õı³£Éú´æ×´Ì¬ =====
+            if (player.refs?.afflictions == null) return;
 
             float activeStrength = CalculateBaseStatus(data, player.refs.afflictions, _ignoreStaminaShock);
+
+            // [ĞŞ¸´] Ë¤µ¹Âß¼­£ºµş¼ÓÄ£Ê½ (ĞŞ¸´Ë¤µ¹±»¸²¸ÇµÄÎÊÌâ)
             if (data.fallSeconds > 0.1f)
             {
-                // å åŠ æ‘”å€’æƒ©ç½šå¼ºåº¦
                 activeStrength += _config.FallPunishment.Value;
-
-                // æ‘”å€’æœŸé—´ä¾ç„¶éœ€è¦æ¸…ç©ºèƒ½é‡ç´¯ç§¯ï¼Œé˜²æ­¢ç‰©ç†ç¢°æ’å¯¼è‡´SPè¯¯åˆ¤
                 _energyLossAccumulator = 0f;
                 _lastEnergy = data.extraStamina;
             }
+
             ApplySmoothing(activeStrength);
 
             if (_config.EnableDebugLog.Value)
@@ -222,24 +203,19 @@ namespace PeakDGLab
                 if (_debugLogTimer >= 1f)
                 {
                     _debugLogTimer = 0f;
-                    string protectInfo = _ignoreStaminaShock ? "[æŠ¤]" : "";
-                    _logger.LogInfo($"[Alive]{protectInfo} ç›®æ ‡:{activeStrength:F1} è¾“å‡º:{CurrentFinalStrength:F1}");
+                    _logger.LogInfo($"[Alive] Ä¿±ê:{activeStrength:F1} Êä³ö:{CurrentFinalStrength:F1}");
                 }
             }
 
             int finalSend = Mathf.CeilToInt(CurrentFinalStrength);
             _ = _apiClient.SendStrengthUpdateAsync(set: finalSend);
 
-            // å¤„ç†èƒ½é‡è„‰å†²
             ProcessEnergyPulse();
         }
 
         private void UpdateEnergyTracker(CharacterData data)
         {
-            if (_lastEnergy == null)
-            {
-                _lastEnergy = data.extraStamina;
-            }
+            if (_lastEnergy == null) _lastEnergy = data.extraStamina;
         }
 
         private void ProcessDeathState(CharacterData data)
@@ -248,24 +224,18 @@ namespace PeakDGLab
             {
                 _isDead = true;
                 _deathStartTime = Time.unscaledTime;
-                _logger.LogInfo("[Death] ç©å®¶æ­»äº¡ï¼Œæƒ©ç½šå¼€å§‹");
             }
 
             float elapsed = Time.unscaledTime - _deathStartTime;
             float target = 0f;
 
             if (elapsed < _config.DeathDuration.Value)
-            {
                 target = _config.DeathPunishment.Value;
-            }
 
             if (target >= CurrentFinalStrength)
                 CurrentFinalStrength = target;
             else
-                CurrentFinalStrength = Mathf.Max(
-                    target,
-                    CurrentFinalStrength - _config.ReductionValue.Value
-                );
+                CurrentFinalStrength = Mathf.Max(target, CurrentFinalStrength - _config.ReductionValue.Value);
 
             int sendVal = Mathf.CeilToInt(CurrentFinalStrength);
             _ = _apiClient.SendStrengthUpdateAsync(set: sendVal);
@@ -274,16 +244,9 @@ namespace PeakDGLab
         private void ApplySmoothing(float target)
         {
             if (target >= CurrentFinalStrength)
-            {
                 CurrentFinalStrength = target;
-            }
             else
-            {
-                CurrentFinalStrength = Mathf.Max(
-                    target,
-                    CurrentFinalStrength - _config.ReductionValue.Value
-                );
-            }
+                CurrentFinalStrength = Mathf.Max(target, CurrentFinalStrength - _config.ReductionValue.Value);
         }
 
         private void ProcessEnergyPulse()
@@ -292,7 +255,11 @@ namespace PeakDGLab
             if (player?.data == null) return;
             var data = player.data;
 
-            if (data.passedOut || data.fullyPassedOut)
+            // [ĞŞ¸´] Âö³åÒ²×ñÑ­ÖÇÄÜÅĞ¶¨£ºÖ»ÓĞÕæÕıÌ±ÈíÊ±²Å×èÖ¹Âö³å
+            bool isRealDying = (data.deathTimer > 0f && !_isDeathTimerBugged && data.currentRagdollControll < 0.5f);
+            bool isRealPassedOut = ((data.passedOut || data.fullyPassedOut) && !_isPassedOutBugged && data.currentRagdollControll < 0.5f);
+
+            if (isRealDying || isRealPassedOut)
             {
                 _energyLossAccumulator = 0f;
                 _lastEnergy = data.extraStamina;
@@ -300,11 +267,9 @@ namespace PeakDGLab
             }
 
             float currentEnergy = data.extraStamina;
-
             if (_lastEnergy != null)
             {
                 float diff = _lastEnergy.Value - currentEnergy;
-
                 if (diff > 0)
                 {
                     _energyLossAccumulator += diff;
@@ -312,9 +277,6 @@ namespace PeakDGLab
 
                     if (pulseStrength >= 3)
                     {
-                        if (_config.EnableDebugLog.Value)
-                            _logger.LogInfo($"[Pulse] SPæ¶ˆè€—è§¦å‘: å¼ºåº¦ {pulseStrength} (ç´¯ç§¯ {_energyLossAccumulator:F4})");
-
                         _ = _apiClient.SendStrengthUpdateAsync(add: pulseStrength);
                         _energyLossAccumulator = 0f;
                     }
@@ -330,7 +292,6 @@ namespace PeakDGLab
         private float CalculateBaseStatus(CharacterData data, CharacterAfflictions afflictions, bool ignoreStamina = false)
         {
             if (data == null || afflictions == null) return 0f;
-
             float strength = 0f;
 
             if (!ignoreStamina)

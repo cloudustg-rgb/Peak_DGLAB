@@ -13,7 +13,7 @@
 > **“解决了爬山时感受不到酸痛的问题 (bushi”**
 > 
 **PEAK X DGLAB (PeakDGLab)** 是一个基于 [BepInEx](https://github.com/BepInEx/BepInEx) 开发的 Unity MOD，专为游戏 **PEAK** 设计。
-本项目 Fork 自 [AliceInCradle_X_DGLAB](https://github.com/sllying/AliceInCradle_X_DGLAB)，使用 [DG-Lab-Coyote-Game-Hub](https://github.com/hyperzlib/DG-Lab-Coyote-Game-Hub) 提供的 API 实现游戏与郊狼 (DGLab) 的震动连接。
+本项目 Fork 自 [AliceInCradle_X_DGLAB](https://github.com/sllying/AliceInCradle_X_DGLAB)，使用 [DG-Lab-Coyote-Game-Hub](https://github.com/hyperzlib/DG-Lab-Coyote-Game-Hub) 提供的 API 实现游戏与郊狼 (DGLab) 的联动。
 
 ---
 

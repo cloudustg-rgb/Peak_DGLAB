@@ -51,7 +51,7 @@
 ## 使用教程
 
 ### MOD 安装教程
-1. **下载**：下载本 MOD 的 Release 压缩包。
+1. **下载**：下载本 MOD 的 Release 压缩包。[点击这里下载本 MOD 的 Release 压缩包](https://github.com/Dusk-islumi/Peak_DGLAB/releases)。
 2. **解压**：将压缩包内的PeakDGLab文件夹中的所有内容：复制到**PEAK** 的根目录下。(*根目录就是能看到 `PEAK.exe` 的那个文件夹。*)
 3. **启动**：直接运行 `PEAK.exe` 启动游戏即可（首次启动需再次重启以便BepInEx安装）。
 

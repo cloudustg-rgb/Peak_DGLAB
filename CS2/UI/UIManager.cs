@@ -1,110 +1,248 @@
-﻿// UIManager.cs
 using System;
 using UnityEngine;
 
-namespace AliceInCradle
+namespace PeakDGLab
 {
     public class UIManager
     {
         public bool IsVisible { get; set; } = false;
 
         private readonly ConfigManager _config;
-        private Rect _windowRect = new Rect(20, 20, 450, 600); // 调整了窗口大小以容纳所有选项
 
-        // 用于临时存储输入框内容的字符串变量
-        private string _heroStr, _holdMsStr, _eroHStr;
-        private string _hpMultiplierStr, _mpMultiplierStr, _epMultiplierStr;
-        private string _maxChangeStr, _checkIntervalStr, _reductionValueStr, _lowestStr;
+        // [修复] 将初始高度设为 50 (或0)，让窗口根据内容自动调整高度
+        // 这样就不会出现"黑框太大"的问题，窗口会刚好包裹住所有按钮和文字
+        private Rect _windowRect = new Rect(20, 20, 480, 50);
+
+        // 临时变量
+        private string _lowStaminaStr, _staminaCurveStr, _energyMultStr;
+        private string _wDrowsy, _wCold, _wHot, _wPoison, _wThorns, _wCurse, _wHunger;
+        private string _passOutMultStr, _deathPunishStr, _deathDurationStr, _fallPunishStr; // [新增] 添加了变量 _fallPunishStr
+        private string _intervalStr, _reductionStr;
+
+        // 样式缓存
+        private GUIStyle _cyanLabelStyle;
+        private GUIStyle _headerStyle;
 
         public UIManager(ConfigManager config)
         {
             _config = config;
-            // 初始化时，将当前的配置值转换为字符串，用于显示在输入框中
-            _heroStr = config.Hero.Value.ToString();
-            _holdMsStr = config.HoldMs.Value.ToString();
-            _eroHStr = config.EroH.Value.ToString();
-            _hpMultiplierStr = config.HpReductionMultiplier.Value.ToString("0.0#"); // 格式化浮点数
-            _mpMultiplierStr = config.MpReductionMultiplier.Value.ToString("0.0#");
-            _epMultiplierStr = config.EpReductionMultiplier.Value.ToString("0.0#");
-            _maxChangeStr = config.MaxChange.Value.ToString();
-            _checkIntervalStr = config.CheckIntervalMs.Value.ToString();
-            _reductionValueStr = config.ReductionValue.Value.ToString();
-            _lowestStr = config.Lowest.Value.ToString();
+            RefreshStrings();
+        }
+
+        private void RefreshStrings()
+        {
+            _lowStaminaStr = _config.LowStaminaMaxStrength.Value.ToString("0.#");
+            _staminaCurveStr = _config.StaminaCurvePower.Value.ToString("0.#");
+            _energyMultStr = _config.EnergyLossMultiplier.Value.ToString("0.#");
+
+            _wDrowsy = _config.WeightDrowsy.Value.ToString("0.#");
+            _wCold = _config.WeightCold.Value.ToString("0.#");
+            _wHot = _config.WeightHot.Value.ToString("0.#");
+            _wPoison = _config.WeightPoison.Value.ToString("0.#");
+            _wThorns = _config.WeightThorns.Value.ToString("0.#");
+            _wCurse = _config.WeightCurse.Value.ToString("0.#");
+            _wHunger = _config.WeightHunger.Value.ToString("0.#");
+
+            _passOutMultStr = _config.PassOutMultiplier.Value.ToString("0.#");
+            _deathPunishStr = _config.DeathPunishment.Value.ToString();
+            _deathDurationStr = _config.DeathDuration.Value.ToString("0.#");
+
+            // [新增] 初始化摔倒惩罚字符串
+            _fallPunishStr = _config.FallPunishment.Value.ToString();
+
+            _intervalStr = _config.CheckIntervalMs.Value.ToString();
+            _reductionStr = _config.ReductionValue.Value.ToString("0.#");
         }
 
         public void OnGUI()
         {
             if (!IsVisible) return;
-            // 绘制主窗口
-            _windowRect = GUILayout.Window(12346, _windowRect, DrawWindow, $"DGLAB 插件设置 (按 {_config.ToggleUiKey.Value} 关闭)");
+
+            // 初始化样式
+            if (_cyanLabelStyle == null)
+            {
+                _cyanLabelStyle = new GUIStyle(GUI.skin.label);
+                _cyanLabelStyle.normal.textColor = Color.cyan;
+                _cyanLabelStyle.fontSize = 18;
+                _cyanLabelStyle.fontStyle = FontStyle.Bold;
+                _cyanLabelStyle.alignment = TextAnchor.MiddleCenter;
+            }
+            if (_headerStyle == null)
+            {
+                _headerStyle = new GUIStyle(GUI.skin.label);
+                _headerStyle.fontStyle = FontStyle.Bold;
+                _headerStyle.normal.textColor = new Color(1f, 0.8f, 0.4f); // 金色标题
+            }
+
+            GUI.backgroundColor = new Color(0.1f, 0.1f, 0.1f, 0.95f);
+            _windowRect = GUILayout.Window(123456, _windowRect, DrawWindow, "PEAK x DGLAB 控制面板");
         }
 
         private void DrawWindow(int windowID)
         {
             GUILayout.BeginVertical();
 
-            // --- 模式设置 ---
-            GUILayout.Label("核心模式\r\n1 默认，受到伤害，增加兴奋度，高潮时增加强度\r\n2 困难，同上默认但消耗mp时增加强度 注：包括使用魔法\r\n0 彩蛋，同上默认但所有伤害都增加强度 注：包括造成的伤害");
-            GUILayout.Label($"当前模式: {_config.FireMode.Value} ({GetFireModeDescription(_config.FireMode.Value)})");
-            _config.FireMode.Value = (int)GUILayout.HorizontalSlider(_config.FireMode.Value, 0, 2);
-            GUILayout.Space(15);
+            // === 顶部：系统控制 ===
+            GUILayout.Label($"=== 系统控制 (快捷键: {_config.ToggleShockKey.Value}) ===", _headerStyle);
 
-            // --- 高潮设置 ---
-            GUILayout.Label("高潮设置 (注意连续高潮会叠加)");
-            DrawIntField("高潮增加强度:", ref _heroStr, _config.Hero);
-            DrawIntField("效果持续时间(ms):", ref _holdMsStr, _config.HoldMs);
-            DrawIntField("结束后恢复强度:", ref _eroHStr, _config.EroH);
-            GUILayout.Space(15);
+            // 1. 电击总开关
+            bool isEnabled = _config.EnableShock.Value;
+            Color originalColor = GUI.backgroundColor;
+            GUI.backgroundColor = isEnabled ? Color.green : Color.red;
 
-            // --- 倍率设置 ---
-            GUILayout.Label("强度倍率");
-            DrawFloatField("HP减少转化倍率（0.1 为 10滴血增加1强度）:", ref _hpMultiplierStr, _config.HpReductionMultiplier);
-            DrawFloatField("MP减少转化倍率（0.1 为 10滴蓝增加1强度）:", ref _mpMultiplierStr, _config.MpReductionMultiplier);
-            DrawFloatField("EP增加转化倍率（1 为 10兴奋度增加1强度，会与上叠加，建议设置在1以下）:", ref _epMultiplierStr, _config.EpReductionMultiplier);
-            DrawIntField("强度生效上限（例一次扣超过200血/蓝/兴奋度时不会提升强度）:", ref _maxChangeStr, _config.MaxChange);
-            GUILayout.Space(15);
-
-            // --- 强度自然衰减 ---
-            GUILayout.Label("强度自然衰减");
-            DrawIntField("衰减间隔(ms):", ref _checkIntervalStr, _config.CheckIntervalMs);
-            DrawIntField("每次衰减值:", ref _reductionValueStr, _config.ReductionValue);
-            GUILayout.Space(15);
-
-            // --- 实验性功能 ---
-            GUILayout.Label("实验性功能");
-            DrawIntField("(已废弃)最低增强值:", ref _lowestStr, _config.Lowest);
-
-            // 占位符，将关闭按钮推到底部
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("关闭菜单"))
+            if (GUILayout.Button(isEnabled ? "⚡ 电击输出: [已开启]" : "⚡ 电击输出: [已停止]", GUILayout.Height(30)))
             {
-                IsVisible = false;
+                _config.EnableShock.Value = !_config.EnableShock.Value;
             }
+
+            // 2. 观战模式开关
+            GUILayout.Space(5);
+            bool isSpec = _config.EnableSpectatorShock.Value;
+            GUI.backgroundColor = isSpec ? Color.cyan : Color.gray;
+
+            if (GUILayout.Button(isSpec ? "👁 观战震动: [已开启] (同步队友)" : "👁 观战震动: [已关闭] (仅限自己)", GUILayout.Height(25)))
+            {
+                _config.EnableSpectatorShock.Value = !_config.EnableSpectatorShock.Value;
+            }
+
+            // 恢复颜色
+            GUI.backgroundColor = originalColor;
+
+            // === 滚动区域 (防止窗口过长) ===
+            GUILayout.Space(5);
+            // 简单分割
+            GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
+
+            // === 1. 配置区域 ===
+            GUILayout.Label("--- 参数配置 ---", _headerStyle);
+
+            DrawSection("体力反馈", () =>
+            {
+                DrawFloatField("空体力最大强度:", ref _lowStaminaStr, _config.LowStaminaMaxStrength);
+                DrawFloatField("体力曲线(1.0线性):", ref _staminaCurveStr, _config.StaminaCurvePower);
+            });
+
+            DrawSection("能量/SP反馈", () =>
+            {
+                DrawFloatField("能量消耗刺痛倍率:", ref _energyMultStr, _config.EnergyLossMultiplier);
+            });
+
+            DrawSection("异常状态权重", () =>
+            {
+                DrawFloatField("困倦:", ref _wDrowsy, _config.WeightDrowsy);
+                DrawFloatField("寒冷:", ref _wCold, _config.WeightCold);
+                DrawFloatField("过热:", ref _wHot, _config.WeightHot);
+                DrawFloatField("中毒:", ref _wPoison, _config.WeightPoison);
+                DrawFloatField("刺痛:", ref _wThorns, _config.WeightThorns);
+                DrawFloatField("诅咒:", ref _wCurse, _config.WeightCurse);
+                DrawFloatField("饥饿:", ref _wHunger, _config.WeightHunger);
+            });
+
+            DrawSection("特殊情境", () =>
+            {
+                DrawFloatField("昏迷震动倍率:", ref _passOutMultStr, _config.PassOutMultiplier);
+                DrawIntField("死亡惩罚强度:", ref _deathPunishStr, _config.DeathPunishment);
+                DrawFloatField("死亡惩罚时长(秒):", ref _deathDurationStr, _config.DeathDuration);
+                // [新增] 摔倒惩罚输入框
+                DrawIntField("摔倒惩罚强度:", ref _fallPunishStr, _config.FallPunishment);
+            });
+
+            GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
+
+            // === 2. 实时监控区域 (根据开关智能显示目标) ===
+            GUILayout.Label("=== 实时数据监控 ===", _headerStyle);
+
+            Character player;
+            if (_config.EnableSpectatorShock.Value)
+            {
+                player = Character.observedCharacter;
+            }
+            else
+            {
+                player = Character.localCharacter;
+            }
+
+            if (player != null && player.data != null)
+            {
+                var d = player.data;
+
+                // 显示当前监控的是谁
+                string targetName = player == Character.localCharacter ? "自己" : "队友/观察目标";
+                GUILayout.Label($"监控目标: {targetName}");
+
+                // 显示体力与能量
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"体力: {d.currentStamina * 100:F1}%");
+                GUILayout.Label($"能量(SP): {d.extraStamina * 100:F1}%");
+                GUILayout.EndHorizontal();
+
+                // 显示异常状态 (只显示有数值的)
+                if (player.refs != null && player.refs.afflictions != null)
+                {
+                    var aff = player.refs.afflictions;
+                    string statusStr = "";
+
+                    float v;
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Drowsy)) > 0) statusStr += $"困倦:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Cold)) > 0) statusStr += $"寒冷:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Hot)) > 0) statusStr += $"过热:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Poison)) > 0) statusStr += $"中毒:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Thorns)) > 0) statusStr += $"刺痛:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Curse)) > 0) statusStr += $"诅咒:{v:F1} ";
+                    if ((v = aff.GetCurrentStatus(CharacterAfflictions.STATUSTYPE.Hunger)) > 0) statusStr += $"饥饿:{v:F1} ";
+
+                    if (string.IsNullOrEmpty(statusStr)) statusStr = "无异常状态";
+                    GUILayout.Label($"状态: {statusStr}");
+                }
+
+                // [新增] 摔倒状态显示
+                if (d.fallSeconds > 0.1f)
+                {
+                    GUILayout.Label($"<color=orange>摔倒/失控: {d.fallSeconds:F1}s</color>");
+                }
+
+                // 死亡倒计时
+                if (d.dead || d.deathTimer > 0)
+                {
+                    GUILayout.Label($"!! 死亡状态 !!", new GUIStyle(GUI.skin.label) { normal = { textColor = Color.red } });
+                }
+            }
+            else
+            {
+                GUILayout.Label("等待游戏数据...");
+            }
+
+            // === 最终强度大字显示 ===
+            GUILayout.Space(10);
+            float finalStrength = PlayerStatusController.CurrentFinalStrength;
+            GUILayout.Label($"当前输出强度: {finalStrength:F1}", _cyanLabelStyle);
+            GUILayout.Space(5);
+
+            // 底部按钮
+            if (GUILayout.Button("关闭菜单")) IsVisible = false;
 
             GUILayout.EndVertical();
-            GUI.DragWindow(); // 让窗口可以拖动
+
+            // 让窗口可拖拽
+            GUI.DragWindow();
         }
 
-        private string GetFireModeDescription(int mode)
+        private void DrawSection(string title, Action drawContent)
         {
-            switch (mode)
-            {
-                case 0: return "彩蛋";
-                case 1: return "默认";
-                case 2: return "困难";
-                default: return "未知";
-            }
+            GUILayout.Label($"[{title}]");
+            drawContent.Invoke();
+            GUILayout.Space(3);
         }
 
-        // --- 绘制UI元素的辅助方法 ---
         private void DrawFloatField(string label, ref string valueStr, BepInEx.Configuration.ConfigEntry<float> configEntry)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(150));
-            valueStr = GUILayout.TextField(valueStr);
-            if (float.TryParse(valueStr, out float result))
+            GUILayout.Label(label, GUILayout.Width(180));
+            string newVal = GUILayout.TextField(valueStr);
+            if (newVal != valueStr)
             {
-                configEntry.Value = result;
+                valueStr = newVal;
+                if (float.TryParse(valueStr, out float result)) configEntry.Value = result;
             }
             GUILayout.EndHorizontal();
         }
@@ -112,11 +250,12 @@ namespace AliceInCradle
         private void DrawIntField(string label, ref string valueStr, BepInEx.Configuration.ConfigEntry<int> configEntry)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, GUILayout.Width(150));
-            valueStr = GUILayout.TextField(valueStr);
-            if (int.TryParse(valueStr, out int result))
+            GUILayout.Label(label, GUILayout.Width(180));
+            string newVal = GUILayout.TextField(valueStr);
+            if (newVal != valueStr)
             {
-                configEntry.Value = result;
+                valueStr = newVal;
+                if (int.TryParse(valueStr, out int result)) configEntry.Value = result;
             }
             GUILayout.EndHorizontal();
         }
